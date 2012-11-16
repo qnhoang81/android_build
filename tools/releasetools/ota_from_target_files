@@ -385,10 +385,6 @@ def WriteFullOTAPackage(input_zip, output_zip):
       metadata=metadata,
       info_dict=OPTIONS.info_dict)
 
-  if not OPTIONS.omit_prereq:
-    ts = GetBuildProp("ro.build.date.utc", OPTIONS.info_dict)
-    script.AssertOlderBuild(ts)
-
   AppendAssertions(script, OPTIONS.info_dict)
   device_specific.FullOTA_Assertions()
   device_specific.FullOTA_InstallBegin()
@@ -403,7 +399,6 @@ def WriteFullOTAPackage(input_zip, output_zip):
 
   script.FormatPartition("/system")
   script.Mount("/system")
-  script.UnpackPackageDir("recovery", "/system")
   script.UnpackPackageDir("system", "/system")
 
   symlinks = CopySystemFiles(input_zip, output_zip)
@@ -411,9 +406,6 @@ def WriteFullOTAPackage(input_zip, output_zip):
 
   boot_img = common.GetBootableImage("boot.img", "boot.img",
                                      OPTIONS.input_tmp, "BOOT")
-  recovery_img = common.GetBootableImage("recovery.img", "recovery.img",
-                                         OPTIONS.input_tmp, "RECOVERY")
-  MakeRecoveryPatch(OPTIONS.input_tmp, output_zip, recovery_img, boot_img)
 
   Item.GetMetadata(input_zip)
   Item.Get("system").SetPermissions(script)
@@ -549,13 +541,6 @@ def WriteIncrementalOTAPackage(target_zip, source_zip, output_zip):
       "/tmp/boot.img", "boot.img", OPTIONS.target_tmp, "BOOT")
   updating_boot = (source_boot.data != target_boot.data)
 
-  source_recovery = common.GetBootableImage(
-      "/tmp/recovery.img", "recovery.img", OPTIONS.source_tmp, "RECOVERY",
-      OPTIONS.source_info_dict)
-  target_recovery = common.GetBootableImage(
-      "/tmp/recovery.img", "recovery.img", OPTIONS.target_tmp, "RECOVERY")
-  updating_recovery = (source_recovery.data != target_recovery.data)
-
   # Here's how we divide up the progress bar:
   #  0.1 for verifying the start state (PatchCheck calls)
   #  0.8 for applying patches (ApplyPatch calls)
@@ -650,24 +635,6 @@ def WriteIncrementalOTAPackage(target_zip, source_zip, output_zip):
     print "boot image changed; including."
   else:
     print "boot image unchanged; skipping."
-
-  if updating_recovery:
-    # Recovery is generated as a patch using both the boot image
-    # (which contains the same linux kernel as recovery) and the file
-    # /system/etc/recovery-resource.dat (which contains all the images
-    # used in the recovery UI) as sources.  This lets us minimize the
-    # size of the patch, which must be included in every OTA package.
-    #
-    # For older builds where recovery-resource.dat is not present, we
-    # use only the boot image as the source.
-
-    MakeRecoveryPatch(OPTIONS.target_tmp, output_zip,
-                      target_recovery, target_boot)
-    script.DeleteFiles(["/system/recovery-from-boot.p",
-                        "/system/etc/install-recovery.sh"])
-    print "recovery image changed; including as patch from boot."
-  else:
-    print "recovery image unchanged; skipping."
 
   script.ShowProgress(0.1, 10)
 
